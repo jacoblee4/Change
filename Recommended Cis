@@ -1,0 +1,59 @@
+(function executeRule(current, previous /*null when async*/) {
+
+    var ciId = current.cmdb_ci.toString();
+    if (!ciId) return;
+    var crId = current.getUniqueValue();
+
+    var LOOKBACK_MONTHS = 24;
+    var PRIORITIES = '1,2,3';
+
+    // --- 1. Major incidents on this CI ---
+    var incIds = [];
+    var inc = new GlideRecord('incident');
+    inc.addQuery('cmdb_ci', ciId);
+    inc.addQuery('priority', 'IN', PRIORITIES);
+    inc.addQuery('sys_created_on', '>=', gs.monthsAgoStart(LOOKBACK_MONTHS));
+    inc.query();
+    while (inc.next())
+        incIds.push(inc.getUniqueValue());
+
+    if (!incIds.length) return;
+
+    // --- 2. Impacted CIs/services on those incidents ---
+    var desired = {};
+    var svc = new GlideRecord('task_cmdb_ci_service');
+    svc.addQuery('task', 'IN', incIds.join(','));
+    svc.query();
+    while (svc.next()) {
+        var s = svc.cmdb_ci_service.toString();
+        if (s && s != ciId)
+            desired[s] = true;
+    }
+
+    // --- 3. What's already recommended for this CR ---
+    var existing = {};
+    var rec = new GlideRecord('u_recommended_affected_cis');
+    rec.addQuery('u_task', crId);
+    rec.query();
+    while (rec.next())
+        existing[rec.u_ci_item.toString()] = rec.getUniqueValue();
+
+    // --- 4. Insert what's missing ---
+    for (var id in desired) {
+        if (existing[id]) continue;
+        var n = new GlideRecord('u_recommended_affected_cis');
+        n.initialize();
+        n.u_task = crId;
+        n.u_ci_item = id;
+        // n.u_source_ci = ciId;   // enable if you later want change-detection
+        n.insert();
+    }
+
+    // --- 5. Removal hook (disabled) ---
+    // for (var old in existing) {
+    //     if (desired[old]) continue;
+    //     var d = new GlideRecord('u_recommended_affected_cis');
+    //     if (d.get(existing[old])) d.deleteRecord();
+    // }
+
+})(current, previous);
