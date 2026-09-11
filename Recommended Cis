@@ -5,7 +5,20 @@
     var crId = current.getUniqueValue();
 
     var LOOKBACK_MONTHS = 24;
-    var PRIORITIES = '1,2,3';
+
+    // --- Priority: all 1s and 2s, plus 3 only if its label contains "High" ---
+    var prios = ['1', '2'];
+    var ch = new GlideRecord('sys_choice');
+    ch.addQuery('name', 'IN', 'task,incident');
+    ch.addQuery('element', 'priority');
+    ch.addQuery('value', '3');
+    ch.addQuery('inactive', '!=', true);
+    ch.addQuery('label', 'CONTAINS', 'High');
+    ch.query();
+    if (ch.hasNext())
+        prios.push('3');
+
+    var PRIORITIES = prios.join(',');
 
     // --- 0. CI changed? wipe the list and rebuild ---
     var ciChanged = (previous && previous.cmdb_ci.toString() != ciId);
@@ -27,15 +40,26 @@
 
     if (!incIds.length) return;
 
-    // --- 2. Impacted CIs/services on those incidents ---
+    // --- 2. Impacted CIs from both tables ---
     var desired = {};
+    var incList = incIds.join(',');
+
     var svc = new GlideRecord('task_cmdb_ci_service');
-    svc.addQuery('task', 'IN', incIds.join(','));
+    svc.addQuery('task', 'IN', incList);
     svc.query();
     while (svc.next()) {
         var s = svc.cmdb_ci_service.toString();
         if (s && s != ciId)
             desired[s] = true;
+    }
+
+    var tci = new GlideRecord('task_ci');
+    tci.addQuery('task', 'IN', incList);
+    tci.query();
+    while (tci.next()) {
+        var t = tci.ci_item.toString();
+        if (t && t != ciId)
+            desired[t] = true;
     }
 
     // --- 3. What's already recommended for this CR ---
