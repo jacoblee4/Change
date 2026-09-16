@@ -1,9 +1,41 @@
-Action label: Remove ({{count}})
+Action label: Move to Affected CIs ({{count}})
 
-Server script: if (current.deleteRecord()) {
-    gs.addInfoMessage(gs.getMessage("Impacted Service/CI {0} is removed successfully", [current.cmdb_ci_service.name]));
+Server script:
+var t = new GlideRecord('task_ci');
+t.initialize();
+t.task = current.u_task;
+t.ci_item = current.u_ci_item;
+t.u_source_incidents = current.u_source_incidents;
+t.u_form_recommendation = true;
+
+if (t.insert() && current.deleteRecord()) {
+    gs.addInfoMessage(gs.getMessage("Recommended CI {0} moved to Affected CIs", [current.u_ci_item.name]));
 } else {
-    gs.addInfoMessage(gs.getMessage("Unable to remove Impacted Service/CI {0}", [current.cmdb_ci_service.name]));
+    gs.addInfoMessage(gs.getMessage("Unable to move Recommended CI {0}", [current.u_ci_item.name]));
 }
 
-script condition: parent.active == true  &&  gs.getProperty('com.snc.task.associate_ci').indexOf(parent.getTableName()) > -1
+script condition: parent.active == true
+
+
+
+
+
+Action label: Move to Impacted CIs ({{count}})
+
+var t = new GlideRecord('task_cmdb_ci_service');
+t.initialize();
+t.task = current.u_task;
+t.cmdb_ci_service = current.u_ci_item;
+t.u_source_incidents = current.u_source_incidents;
+t.u_form_recommendation = true;
+
+if (t.insert() && current.deleteRecord()) {
+    gs.addInfoMessage(gs.getMessage("Recommended CI {0} moved to Impacted CIs", [current.u_ci_item.name]));
+} else {
+    gs.addInfoMessage(gs.getMessage("Unable to move Recommended CI {0}", [current.u_ci_item.name]));
+}
+
+
+
+
+
