@@ -1,0 +1,26 @@
+var t = new GlideRecord('task_ci');
+t.initialize();
+t.task = current.u_task;
+t.ci_item = current.u_ci_item;
+t.u_source_incidents = current.u_source_incidents;
+t.u_form_recommendation = true;
+
+if (t.insert() && current.deleteRecord()) {
+    gs.addInfoMessage(gs.getMessage("Recommended CI {0} moved to Affected CIs", [current.u_ci_item.name]));
+} else {
+    gs.addInfoMessage(gs.getMessage("Unable to move Recommended CI {0}", [current.u_ci_item.name]));
+}
+
+
+
+
+
+var t = new GlideRecord('task_ci');
+t.initialize();
+t.task = current.u_task;
+t.ci_item = current.u_ci_item;
+t.u_source_incidents = current.u_source_incidents;
+t.u_from_recommendation = true;
+t.insert();
+
+current.deleteRecord();
