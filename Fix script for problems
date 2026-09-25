@@ -1,0 +1,36 @@
+/*
+ * Fix Script: Backfill Causing CI on Incidents from Problem
+ * One-time sync of u_causing_configuration_item from linked Problem to Incident.
+ * Only updates incidents where the value differs.
+ * setWorkflow(false): no BRs, notifications, flows, or engines.
+ * autoSysFields(false): Updated / Updated by / mod count are not changed.
+ */
+(function() {
+    var DRY_RUN = true; // set to false to apply changes
+    var FIELD = 'u_causing_configuration_item';
+    var checked = 0, updated = 0;
+
+    var inc = new GlideRecord('incident');
+    inc.addNotNullQuery('problem_id');
+    inc.query();
+
+    while (inc.next()) {
+        checked++;
+        var problemCI = inc.problem_id[FIELD] + '';
+        if (problemCI == 'undefined' || problemCI == 'null') problemCI = '';
+
+        if ((inc.getValue(FIELD) || '') != problemCI) {
+            updated++;
+            if (!DRY_RUN) {
+                inc.setWorkflow(false);
+                inc.autoSysFields(false);
+                inc.setValue(FIELD, problemCI);
+                inc.update();
+            } else {
+                gs.info('[DRY RUN] ' + inc.getValue('number') + ': "' + (inc.getValue(FIELD) || '') + '" -> "' + problemCI + '"');
+            }
+        }
+    }
+
+    gs.info('Causing CI backfill ' + (DRY_RUN ? '[DRY RUN]' : '') + ' - checked: ' + checked + ', ' + (DRY_RUN ? 'would update: ' : 'updated: ') + updated);
+})();
