@@ -1,0 +1,49 @@
+BR 1
+
+Name: Skip Recommended CIs on Copy (Affected)
+Table: Affected CI [task_ci]
+Active: ✓ | Advanced: ✓
+When: before | Order: 100
+Insert: ✓ (Update/Delete/Query unchecked)
+Condition:
+javascript
+current.task.sys_class_name == 'change_request' && !current.task.ref_change_request.copied_from.nil()
+Script:
+javascript
+(function executeRule(current, previous) {
+	var src = new GlideRecord('task_ci');
+	src.addQuery('task', current.task.ref_change_request.copied_from);
+	src.addQuery('ci_item', current.getValue('ci_item'));
+	src.addQuery('u_form_recommendation', true);
+	src.setLimit(1);
+	src.query();
+
+	if (src.hasNext())
+		current.setAbortAction(true);
+})(current, previous);
+
+BR 2
+
+Name: Skip Recommended CIs on Copy (Impacted)
+Table: Impacted Services/CIs [task_cmdb_ci_service]
+Active: ✓ | Advanced: ✓
+When: before | Order: 100
+Insert: ✓ (Update/Delete/Query unchecked)
+Condition:
+javascript
+current.task.sys_class_name == 'change_request' && !current.task.ref_change_request.copied_from.nil()
+Script:
+javascript
+(function executeRule(current, previous) {
+	var src = new GlideRecord('task_cmdb_ci_service');
+	src.addQuery('task', current.task.ref_change_request.copied_from);
+	src.addQuery('cmdb_ci_service', current.getValue('cmdb_ci_service'));
+	src.addQuery('u_form_recommendation', true);
+	src.setLimit(1);
+	src.query();
+
+	if (src.hasNext())
+		current.setAbortAction(true);
+})(current, previous);
+
+Important: If your field is actually u_from_recommendation, change it in both scripts.
