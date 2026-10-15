@@ -1,0 +1,138 @@
+(function executeRule(current, previous /*null when async*/) {
+
+    var ciId = current.cmdb_ci.toString();
+    if (!ciId) return;
+    var crId = current.getUniqueValue();
+
+    var LOOKBACK_MONTHS = 24;
+    var cutoff = gs.monthsAgoStart(LOOKBACK_MONTHS);
+
+    // --- 0. CI changed? wipe and rebuild ---
+    var ciChanged = (previous && previous.cmdb_ci.toString() != ciId);
+    if (ciChanged) {
+        var wipe = new GlideRecord('u_recommended_affected_cis');
+        wipe.addQuery('u_task', crId);
+        wipe.deleteMultiple();
+    }
+
+    // --- 1. Qualifying incidents: P1, P2, or P3 flagged high ---
+    var incIds = {};
+
+    var a = new GlideRecord('incident');
+    a.addQuery('cmdb_ci', ciId);
+    a.addQuery('sys_created_on', '>=', cutoff);
+    a.addQuery('priority', 'IN', '1,2');
+    a.query();
+    while (a.next())
+        incIds[a.getUniqueValue()] = true;
+
+    var b = new GlideRecord('incident');
+    b.addQuery('cmdb_ci', ciId);
+    b.addQuery('sys_created_on', '>=', cutoff);
+    b.addQuery('priority', 3);
+    b.addQuery('u_p3high', true);
+    b.query();
+    while (b.next())
+        incIds[b.getUniqueValue()] = true;
+
+    var incList = Object.keys(incIds);
+    if (!incList.length) return;
+    var incCsv = incList.join(',');
+
+    // --- 2. Gather CIs from both tables, tracking source incidents ---
+    var found = {};   // ciSysId -> { incidentSysId: true }
+
+    function collect(table, ciField) {
+        var gr = new GlideRecord(table);
+        gr.addQuery('task', 'IN', incCsv);
+        gr.query();
+        while (gr.next()) {
+            var c = gr.getValue(ciField);
+            if (!c || c == ciId) continue;
+            if (!found[c]) found[c] = {};
+            found[c][gr.getValue('task')] = true;
+        }
+    }
+
+    collect('task_ci', 'ci_item');
+    collect('task_cmdb_ci_service', 'cmdb_ci_service');
+
+    // --- 3. Exclude CIs already affected/impacted on the CR itself ---
+    var onCr = {};
+
+    function excludeFromCr(table, ciField) {
+        var gr = new GlideRecord(table);
+        gr.addQuery('task', crId);
+        gr.query();
+        while (gr.next()) {
+            var c = gr.getValue(ciField);
+            if (c) onCr[c] = true;
+        }
+    }
+
+    excludeFromCr('task_ci', 'ci_item');
+    excludeFromCr('task_cmdb_ci_service', 'cmdb_ci_service');
+
+    for (var x in onCr)
+        delete found[x];
+
+    // --- 4. Existing recommendations for this CR ---
+    var existing = {};   // ciSysId -> { sysId: rec, incidents: {} }
+    if (!ciChanged) {
+        var rec = new GlideRecord('u_recommended_affected_cis');
+        rec.addQuery('u_task', crId);
+        rec.query();
+        while (rec.next()) {
+            var incMap = {};
+            var cur = rec.getValue('u_source_incidents');
+            if (cur) {
+                var parts = cur.split(',');
+                for (var p = 0; p < parts.length; p++)
+                    if (parts[p]) incMap[parts[p]] = true;
+            }
+            existing[rec.getValue('u_ci_item')] = {
+                sysId: rec.getUniqueValue(),
+                incidents: incMap
+            };
+        }
+    }
+
+    // --- 5. Insert new, top up existing ---
+    var added = 0;
+    for (var id in found) {
+        var keys = Object.keys(found[id]);
+
+        if (!existing[id]) {
+            var n = new GlideRecord('u_recommended_affected_cis');
+            n.initialize();
+            n.u_task = crId;
+            n.u_ci_item = id;
+            n.u_source_incidents = keys.join(',');
+            n.insert();
+            added++;
+            continue;
+        }
+
+        var merged = existing[id].incidents;
+        var isNew = false;
+        for (var k = 0; k < keys.length; k++) {
+            if (!merged[keys[k]]) {
+                merged[keys[k]] = true;
+                isNew = true;
+            }
+        }
+        if (isNew) {
+            var u = new GlideRecord('u_recommended_affected_cis');
+            if (u.get(existing[id].sysId)) {
+                u.u_source_incidents = Object.keys(merged).join(',');
+                u.update();
+            }
+        }
+    }
+
+    // --- 6. Banner ---
+    if (added > 0)
+        gs.addInfoMessage(added + ' Recommended Affected CI' +
+            (added == 1 ? '' : 's') + ' have been added for your review in the related records.');
+
+})(current, previous);
