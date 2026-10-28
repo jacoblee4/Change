@@ -1,0 +1,23 @@
+/**
+ * Business Rule: CI Discrepancy on Close - Change
+ *
+ *   Table:     Change Request [change_request]
+ *   Active:    true
+ *   Advanced:  true
+ *   When:      async
+ *   Insert:    false
+ *   Update:    true
+ *   Order:     100
+ *
+ *   Condition (Advanced tab):
+ *     current.state.changesTo(3) && !current.cmdb_ci.nil() && (current.type + '' == 'normal' || current.type + '' == 'expedited')
+ *
+ * Checks only the change being closed. Uses CIDiscrepancyUtil.
+ *
+ * Script (Advanced tab):
+ */
+(function executeRule(current, previous /*null when async*/) {
+
+    new CIDiscrepancyUtil(false).processTask(current);
+
+})(current, previous);
