@@ -1,0 +1,74 @@
+/**
+ * Fix Script: CI Discrepancy - initial backfill
+ *
+ * Looks back 24 months (by closed date) at CLOSED tickets only:
+ *   - Change Requests: state Closed (3), type normal or expedited
+ *   - Incidents: state Closed (7), P1, P2, or P3 with u_p3high = true
+ * and creates u_configuration_item_discrepancy records for anything
+ * that was not auto-mapped. Uses CIDiscrepancyUtil (same logic as the closure BRs).
+ *
+ * 1. Run with DRY_RUN = true first and review the log (System Logs > All,
+ *    message starts with "[CI Discrepancy]").
+ * 2. Set DRY_RUN = false and run again. Choose "Proceed in Background".
+ *
+ * Safe to re-run: active duplicates (same main CI + same found CI) are skipped.
+ */
+(function () {
+
+    var DRY_RUN = true;      // <-- set to false to create records
+    var MONTHS_BACK = 24;
+
+    var since = new GlideDateTime();
+    since.addMonthsUTC(-MONTHS_BACK);
+    var sinceValue = since.getValue();
+
+    var util = new CIDiscrepancyUtil(DRY_RUN);
+    gs.info('[CI Discrepancy] Starting backfill. DRY_RUN=' + DRY_RUN + ', closed since ' + sinceValue);
+
+    run('change_request', 'Normal/Expedited changes', function (gr) {
+        gr.addQuery('state', 3);
+        gr.addQuery('type', 'IN', 'normal,expedited');
+    });
+
+    run('incident', 'P1/P2 incidents', function (gr) {
+        gr.addQuery('state', 7);
+        gr.addQuery('priority', 'IN', '1,2');
+    });
+
+    run('incident', 'P3 High incidents', function (gr) {
+        gr.addQuery('state', 7);
+        gr.addQuery('priority', 3);
+        gr.addQuery('u_p3high', true);
+    });
+
+    gs.info('[CI Discrepancy] Finished. Tickets checked: ' + util.stats.tasks +
+        ' | Affected found: ' + util.stats.affected +
+        ' | Impacted found: ' + util.stats.impacted +
+        ' | Skipped as duplicate: ' + util.stats.skippedDuplicate +
+        (DRY_RUN ? ' | DRY RUN - nothing created' : ''));
+
+    function run(table, label, addFilters) {
+        var gr = new GlideRecord(table);
+        addFilters(gr);
+        gr.addNotNullQuery('cmdb_ci');
+        gr.addQuery('closed_at', '>=', sinceValue);
+        gr.orderBy('closed_at');
+        gr.query();
+
+        gs.info('[CI Discrepancy] ' + label + ': ' + gr.getRowCount() + ' tickets to check');
+
+        var n = 0;
+        while (gr.next()) {
+            try {
+                util.processTask(gr);
+            } catch (e) {
+                gs.error('[CI Discrepancy] Error on ' + gr.getValue('number') + ': ' + e);
+            }
+            n++;
+            if (n % 500 == 0)
+                gs.info('[CI Discrepancy] ' + label + ': processed ' + n);
+        }
+        gs.info('[CI Discrepancy] ' + label + ': done (' + n + ')');
+    }
+
+})();
