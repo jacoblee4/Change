@@ -1,0 +1,116 @@
+// READ-ONLY trace of the custom Affected CI auto-mapping.
+// Run in: System Definition > Scripts - Background (sub-prod first).
+// It only queries records; it does not insert, update or delete anything.
+// Output: every CI the auto-mapping BR would add for the given CI, with the
+// cmdb_rel_ci relationship that caused it and which related list it lands in.
+
+var CI_SYS_ID = 'PASTE_CI_SYS_ID_HERE';   // the CI you set on the incident
+var PREFIX    = 'incident';               // 'incident' or 'change_request'
+var MAX_DEPTH = 10;                       // safety guard (the real BR has none)
+
+// Same (swapped) property reads as the real BR, so results match it exactly
+var upstream   = JSON.parse(gs.getProperty(PREFIX + '_downstream_affected_ci', '{}'));
+var downstream = JSON.parse(gs.getProperty(PREFIX + '_upstream_affected_ci', '{}'));
+
+gs.info('"upstream" config (from ' + PREFIX + '_downstream_affected_ci): ' + JSON.stringify(upstream));
+gs.info('"downstream" config (from ' + PREFIX + '_upstream_affected_ci): ' + JSON.stringify(downstream));
+
+var count = 0;
+var start = new GlideRecord('cmdb_ci');
+if (!start.get(CI_SYS_ID)) {
+    gs.info('CI not found: ' + CI_SYS_ID);
+} else {
+    gs.info('Tracing from: ' + start.getDisplayValue() + ' (' + start.sys_class_name + ')');
+    walk(start, null, 0);
+    gs.info('Done. ' + count + ' related CI hits (duplicates possible; the BR only inserts each once).');
+}
+
+function walk(ci, dir, depth) {
+    if (depth > MAX_DEPTH) {
+        gs.info(pad(depth) + '!! Stopped at depth ' + MAX_DEPTH + ' (possible relationship loop)');
+        return;
+    }
+    var up   = getImpactedRelations(getRelationFromCi(ci, true),  ci, true);
+    var down = getImpactedRelations(getRelationFromCi(ci, false), ci, false);
+
+    if (up && (!dir || dir == 'up') && upstream.execute) {
+        while (up.next()) {
+            report(up, true, depth);
+            if (upstream.recursive) walk(up.child, 'up', depth + 1);
+        }
+    }
+    if (down && (!dir || dir == 'down') && downstream.execute) {
+        while (down.next()) {
+            report(down, false, depth);
+            if (downstream.recursive) walk(down.parent, 'down', depth + 1);
+        }
+    }
+}
+
+function report(rel, ciIsParent, depth) {
+    count++;
+    var related = ciIsParent ? rel.child : rel.parent;
+    var cls = related.sys_class_name + '';
+    var target = (cls == 'cmdb_ci_service') ? 'Impacted Services' : 'Affected CIs';
+    gs.info(pad(depth) + (ciIsParent ? '[CI is parent -> child added] ' : '[CI is child -> parent added] ') +
+        related.getDisplayValue() + ' (' + cls + ')' +
+        ' | rel type: ' + rel.type.getDisplayValue() +
+        ' | cmdb_rel_ci: ' + rel.sys_id +
+        ' | goes to: ' + target);
+}
+
+function pad(depth) {
+    var s = '';
+    for (var i = 0; i < depth; i++) s += '    ';
+    return s + 'L' + (depth + 1) + ' ';
+}
+
+// ---- Copied unchanged from the real BR so the trace behaves identically ----
+
+function getImpactedRelations(rels, ci, parent){
+    var realRelations = new GlideRecord('cmdb_rel_ci');
+    var queries = [];
+    if(rels.length != 0){
+        rels.forEach(function(rel) {
+            var conditions = [];
+            if(parent){
+                conditions.push("parent=" + ci.sys_id);
+            }else{
+                conditions.push("child=" + ci.sys_id);
+            }
+            conditions.push("parent.sys_class_nameINSTANCEOF" + rel.base_class);
+            conditions.push("child.sys_class_nameINSTANCEOF" + rel.dependent_class);
+            conditions.push("type=" + rel.relationship.split(':')[1]);
+            queries.push(conditions.join('^'));
+        });
+        realRelations.addEncodedQuery(queries.join('^NQ'));
+        realRelations.query();
+        return realRelations;
+    }
+}
+
+function getRelationFromCi(ci, parent){
+    var table_name = (ci.sys_class_name || ci.getTableName());
+    var table = new TableUtils(table_name);
+    var parents_tables = JSON.parse(JSON.stringify(table.getTables().toArray())).join(',');
+
+    var impacted_relations = new GlideRecord('cmdb_rel_type_suggest');
+    impacted_relations.addQuery('u_impacted_relation', 1);
+    if(parent){
+        impacted_relations.addQuery('base_class', "IN", parents_tables);
+        impacted_relations.addQuery('', "STARTWITH", 'parent:');
+    }else{
+        impacted_relations.addQuery('dependent_class', "IN", parents_tables);
+        impacted_relations.addQuery('', "STARTWITH", 'child:');
+    }
+    impacted_relations.query();
+    var relations = [];
+    while(impacted_relations.next()){
+        relations.push({
+            base_class : impacted_relations.getValue('base_class'),
+            relationship : impacted_relations.getValue('relationship'),
+            dependent_class : impacted_relations.getValue('dependent_class')
+        });
+    }
+    return relations;
+}
