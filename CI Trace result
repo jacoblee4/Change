@@ -1,7 +1,7 @@
-*** Script: "upstream" config (from change_request_downstream_affected_ci): {"execute":true,"recursive":false}
-*** Script: "downstream" config (from change_request_upstream_affected_ci): {"execute":false,"recursive":false}
-*** Script: Tracing from: Fedlink (cmdb_ci_business_app)
-Invalid query detected, please check logs for details [Unknown field  in table cmdb_rel_type_suggest]
+// Server
+*** Script: "upstream" config (from incident_downstream_affected_ci): {"execute":true,"recursive":false}
+*** Script: "downstream" config (from incident_upstream_affected_ci): {"execute":false,"recursive":false}
+*** Script: Tracing from: SV8925EHB03 (cmdb_ci_server)
 Invalid query detected, please check logs for details [Unknown field getRoles.role.name in table sys_user_has_role]
 QueryEventLogger: Invalid query detected, please check logs for details [Unknown field  in table cmdb_rel_type_suggest]
 Invalid query detected, stack trace below [Unknown field getRoles.role.name in table sys_user_has_role]
@@ -130,80 +130,15 @@ Invalid query detected, stack trace below [Unknown field  in table cmdb_rel_type
 	com.glide.sys.util.sema.SemaphoreQueueThreadPool$Semaphore.runThread(SemaphoreQueueThreadPool.java:159)
 	java.base/java.lang.Thread.run(Thread.java:1583)
 
-Invalid query detected, stack trace below [Unknown field  in table cmdb_rel_type_suggest]
-	com.glide.db.QueryEventLogger.logInvalidQuery(QueryEventLogger.java:56)
-	com.glide.db.QueryEventLogger.logInvalidQuery(QueryEventLogger.java:47)
-	com.glide.script.GlideRecord.isInvalidTableField(GlideRecord.java:2903)
-	com.glide.script.GlideRecord.isFieldInvalid(GlideRecord.java:2529)
-	com.glide.script.GlideRecord.jsFunction_addQuery(GlideRecord.java:2463)
-	java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
-	java.base/java.lang.reflect.Method.invoke(Method.java:580)
-	org.mozilla.javascript.MemberBox.invoke(MemberBox.java:268)
-	org.mozilla.javascript.FunctionObject.doInvoke(FunctionObject.java:759)
-	org.mozilla.javascript.FunctionObject.call(FunctionObject.java:688)
-	org.mozilla.javascript.ScriptRuntime.doCall(ScriptRuntime.java:3567)
-	org.mozilla.javascript.Interpreter.doCallByteCode(Interpreter.java:2957)
-	org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:1855)
-	org.mozilla.javascript.Interpreter.interpret(Interpreter.java:1011)
-	org.mozilla.javascript.InterpretedFunction.lambda$call$0(InterpretedFunction.java:127)
-	com.glide.caller.gen.null_null_script.call(Unknown Source)
-	com.glide.script.ScriptCaller.call(ScriptCaller.java:22)
-	org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:125)
-	org.mozilla.javascript.ScriptRuntime.doCall2(ScriptRuntime.java:3669)
-	org.mozilla.javascript.ScriptRuntime.doCall(ScriptRuntime.java:3577)
-	org.mozilla.javascript.Interpreter.doCallByteCode(Interpreter.java:2957)
-	org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:1855)
-	org.mozilla.javascript.Interpreter.interpret(Interpreter.java:1011)
-	org.mozilla.javascript.InterpretedFunction.lambda$call$0(InterpretedFunction.java:127)
-	com.glide.caller.gen.null_null_script.call(Unknown Source)
-	com.glide.script.ScriptCaller.call(ScriptCaller.java:22)
-	org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:125)
-	org.mozilla.javascript.ScriptRuntime.doCall2(ScriptRuntime.java:3669)
-	org.mozilla.javascript.ScriptRuntime.doCall(ScriptRuntime.java:3577)
-	org.mozilla.javascript.Interpreter.doCallByteCode(Interpreter.java:2957)
-	org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:1855)
-	org.mozilla.javascript.Interpreter.interpret(Interpreter.java:1011)
-	org.mozilla.javascript.InterpretedFunction.lambda$call$0(InterpretedFunction.java:127)
-	com.glide.caller.gen.null_null_script.call(Unknown Source)
-	com.glide.script.ScriptCaller.call(ScriptCaller.java:22)
-	org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:125)
-	org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:743)
-	org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:5226)
-	org.mozilla.javascript.InterpretedFunction.exec(InterpretedFunction.java:142)
-	com.glide.script.ScriptCompiler.executeAndPublishMetric(ScriptCompiler.java:85)
-	com.glide.script.ScriptEvaluator.execute(ScriptEvaluator.java:550)
-	com.glide.script.ScriptEvaluator.evaluate(ScriptEvaluator.java:253)
-	com.glide.script.fencing.GlideScopedEvaluator.evaluateScript(GlideScopedEvaluator.java:431)
-	com.glide.script.fencing.GlideScopedEvaluator.evaluateScript(GlideScopedEvaluator.java:314)
-	com.glide.script.fencing.GlideScopedEvaluator.evaluateScript(GlideScopedEvaluator.java:289)
-	com.glide.processors.ScriptProcessor.evaluateScript0(ScriptProcessor.java:415)
-	com.glide.processors.ScriptProcessor.lambda$evaluateScriptWithRecordingOption$0(ScriptProcessor.java:398)
-	com.glide.rollback.recording.RollbackRecorder.execute(RollbackRecorder.java:67)
-	com.glide.processors.ScriptProcessor.evaluateScriptWithRecordingOption(ScriptProcessor.java:398)
-	com.glide.processors.ScriptProcessor.evaluateScript(ScriptProcessor.java:379)
-	com.glide.processors.ScriptProcessor.runScript(ScriptProcessor.java:276)
-	com.glide.processors.ScriptProcessor.process(ScriptProcessor.java:234)
-	com.glide.processors.AProcessor.runProcessor(AProcessor.java:937)
-	com.glide.processors.AProcessor.processTransaction(AProcessor.java:358)
-	com.glide.processors.ProcessorRegistry.process0(ProcessorRegistry.java:234)
-	com.glide.processors.ProcessorRegistry.process(ProcessorRegistry.java:222)
-	com.glide.ui.GlideServletTransaction.process(GlideServletTransaction.java:58)
-	com.glide.sys.Transaction.executeServletTransaction(Transaction.java:3371)
-	com.glide.sys.Transaction.run(Transaction.java:3360)
-	com.glide.ui.HTTPTransaction.run(HTTPTransaction.java:76)
-	com.glide.sys.util.sema.SemaphoreQueueThreadPool$Semaphore.runTransaction(SemaphoreQueueThreadPool.java:374)
-	com.glide.sys.util.sema.SemaphoreQueueThreadPool$Semaphore.runThreadImpl(SemaphoreQueueThreadPool.java:338)
-	com.glide.sys.util.sema.SemaphoreQueueThreadPool$Semaphore.runThread(SemaphoreQueueThreadPool.java:159)
-	java.base/java.lang.Thread.run(Thread.java:1583)
+*** Script: Done. 0 related CI hits (duplicates possible; the BR only inserts each once).
 
-*** Script: L1 [CI is parent -> child added] Actimize Xceed Fraud ACH-RDFI (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 0bf190fb1b026918d208553f034bcbe5 | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Varonis DatAdvantage (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 4d47965d1bd2f5147a5bca2b234bcbd4 | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Wells Fargo FX Real Time Rates (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 5403bceb1b8edc1076cb54e56e4bcb38 | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Warehouse Loan Management System (WLS) (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 91b4187b1b426918d208553f034bcbed | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Informatica (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 2763786f1b8edc1076cb54e56e4bcbfe | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Bottomline DBIQ/Lynx Internet Banking Commercial (BFS) (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 976241eb1b06105076cb54e56e4bcb81 | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Fiserv Desktop Teller (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 5b64f0a71bcedc1076cb54e56e4bcb4b | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Fiserv Communicator (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: 3a5132eadb8bc0907e428f3813961951 | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Fiserv Commercial Center (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: b6cdc4b31bce2918d208553f034bcb2c | goes to: Affected CIs
-*** Script: L1 [CI is parent -> child added] Fedline Advantage (cmdb_ci_business_app) | rel type: Depends on::Used by | cmdb_rel_ci: fdbd04b31bce2918d208553f034bcbed | goes to: Affected CIs
-*** Script: Done. 10 related CI hits (duplicates possible; the BR only inserts each once).
+
+
+
+
+// Business Services
+*** Script: "upstream" config (from incident_downstream_affected_ci): {"execute":true,"recursive":false}
+*** Script: "downstream" config (from incident_upstream_affected_ci): {"execute":false,"recursive":false}
+*** Script: Tracing from: Trade Banking (cmdb_ci_service)
+*** Script: Done. 0 related CI hits (duplicates possible; the BR only inserts each once).
+
