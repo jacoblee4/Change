@@ -1,0 +1,21 @@
+x_banun_bunow_al_0: "upstream" config (from incident_downstream_affected_ci): {"execute":true,"recursive":false}
+x_banun_bunow_al_0: "downstream" config (from incident_upstream_affected_ci): {"execute":false,"recursive":false}
+Security restricted: Read operation on table 'cmdb_ci' from scope 'BUNow Alarm Panel' was granted and added to 'BUNow Alarm Panel' cross scope privileges
+[CacheFlushLog] event=sys_metadata_customization, count=1, ms=0: Flushing catalog sys_metadata_customization
+x_banun_bunow_al_0: Tracing from: Fedlink (cmdb_ci_business_app)
+Security restricted: Execute operation on script include 'TableUtils' from scope 'BUNow Alarm Panel' was granted and added to 'BUNow Alarm Panel' cross scope privileges
+Script execution error: Script Identifier: null.null.script, Error Description: "TableUtils" is not defined., Script ES Level: 250
+Evaluator: com.glide.script.RhinoEcmaError: "TableUtils" is not defined.
+   script : Line(94) column(0)
+     91: 
+     92: function getRelationFromCi(ci, parent){
+     93:     var table_name = (ci.sys_class_name || ci.getTableName());
+==>  94:     var table = new TableUtils(table_name);
+     95:     var parents_tables = JSON.parse(JSON.stringify(table.getTables().toArray())).join(',');
+     96: 
+     97:     var impacted_relations = new GlideRecord('cmdb_rel_type_suggest');
+ Stack trace:
+	at null.null.script:94 (getRelationFromCi)
+	at null.null.script:33 (walk)
+	at null.null.script:24
+
