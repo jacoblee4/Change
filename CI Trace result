@@ -1,390 +1,61 @@
-Business rules:
-sys_script.list?sysparm_query=scriptLIKEtask_ci^ORscriptLIKEtask_cmdb_ci_service
+(function executeRule(current, previous /* null when async */) {
 
-Name
-⨮
-Active
-⨮
-Table
-⨮
-Application
-⨮
-Order
-⨮
-Updated
-⨮
+    var taskSysId = current.getValue('task');
 
-Add Related Affected CIs INC/CHG	true	
-CIs Affected [task_ci]
+    if (!taskSysId)
+        return;
 
-Global	100	
-08-10-2026 08:52:45
+    // Get the parent task record.
+    var taskGR = current.task.getRefRecord();
 
-Refresh services on CI change	true	
-CIs Affected [task_ci]
+    if (!taskGR || !taskGR.isValidRecord())
+        return;
 
-Security Incident Response	100	
-02-20-2026 05:23:40
+    var taskTable = taskGR.getRecordClassName();
 
-Close associated incident	true	
-Alert [em_alert]
+    // Only run for Incidents and Changes.
+    if (taskTable !== 'incident' && taskTable !== 'change_request')
+        return;
 
-Global	400	
-09-12-2024 07:20:31
+    rebuildRelatedAffectedCIs(taskTable, taskSysId);
 
-Add SIs to Score Calculator Queue	true	
-Configuration Item Enrichment [sn_sec_cmn_ci_enrichment_result]
 
-Security Incident Response Workspace	100	
-04-01-2024 14:03:31
+    function rebuildRelatedAffectedCIs(parentTable, parentSysId) {
 
-change events	true	
-Change Request [change_request]
+        var ciIds = [];
+        var seen = {};
 
-Global	100	
-05-21-2021 11:37:54
+        // Query all affected CI records for this task.
+        var taskCiGR = new GlideRecord('task_ci');
+        taskCiGR.addQuery('task', parentSysId);
+        taskCiGR.addNotNullQuery('ci_item');
+        taskCiGR.query();
 
-confirm risk assesment + Test	true	
-Change Request [change_request]
+        while (taskCiGR.next()) {
+            var ciId = taskCiGR.getValue('ci_item');
 
-Global	100	
-10-01-2019 21:33:44
+            if (ciId && !seen[ciId]) {
+                seen[ciId] = true;
+                ciIds.push(ciId);
+            }
+        }
 
-affected cis from relationships	true	
-Incident [incident]
+        // Get the parent Incident or Change.
+        var parentGR = new GlideRecord(parentTable);
 
-Global	1,000	
-08-22-2019 21:45:51
+        if (!parentGR.get(parentSysId))
+            return;
 
-affected cis from relationships	true	
-Change Request [change_request]
+        var newValue = ciIds.join(',');
+        var existingValue = parentGR.getValue('u_related_affected_cis') || '';
 
-Global	1,000	
-08-22-2019 21:42:13
+        // Avoid unnecessary updates.
+        if (existingValue === newValue)
+            return;
 
-add Other Users to the Business Email	true	
-Email [sys_email]
+        parentGR.setValue('u_related_affected_cis', newValue);
 
-Global	0	
-08-05-2019 09:03:24
+        parentGR.update();
+    }
 
-Sync BS with Impacted Services	true	
-Task [task]
-
-Global	100	
-06-05-2017 05:59:30
-
-Update SI risk score	true	
-Business Service [cmdb_ci_service]
-
-Security Incident Response	400	
-12-05-2016 15:38:32
-
-Prevent Duplicate Order Affected CIs	true	
-CIs Affected [task_ci]
-
-Global	101	
-06-02-2015 21:59:45
-
-SNC Baseline Globals	true	
-Global [global]
-
-Global	100	
-09-02-2014 19:15:58
-
-Process CI Relationships	true	
-Expense Line [fm_expense_line]
-
-Global	100	
-11-14-2011 10:13:38
-
-Sync CI with Affected CIs	true	
-Task [task]
-
-Global	100	
-07-14-2011 10:31:42
-
-Outside Maintenance Schedule	true	
-Configuration Item [cmdb_ci]
-
-Global	100	
-09-10-2009 20:34:20
-
-Outside Maintenance Schedule	true	
-Schedule Entry [cmn_schedule_span]
-
-Global	100	
-09-10-2009 20:07:35
-
-Delete Impacted Services	true	
-Task [task]
-
-Global	100	
-04-23-2009 18:43:47
-
-
-
-
-
-Script includes:
-sys_script_include.list?sysparm_query=scriptLIKEtask_ci^ORscriptLIKEtask_cmdb_ci_service
-
-Name
-⨮
-Application
-⨮
-Active
-⨮
-Description
-⨮
-Updated
-⨮
-
-AffectedCIsDAO	IT Service Management AI agent collection	true	DAO for Affected CIs - queries task_ci w...	
-03-02-2026 19:11:25
-
-AssociateCIsToChangeUtil	Global	true		
-11-29-2024 04:31:36
-
-AssociateCIToTask	Global	true	Utility functions for 'Associate CI's' t...	
-06-10-2024 09:43:33
-
-ChangeCheckConflictsSNC	Global	true	Base class methods for Change Management...	
-02-18-2026 16:28:03
-
-ChangeCIAjaxProcessor	Global	true		
-08-12-2024 11:28:18
-
-ChangeCIAssociation	Global	true	The change association API. Provides an ...	
-02-14-2019 08:30:04
-
-ChangeCIAssociationManagerSNC	Global	true	Base Change Association Manager API. Use...	
-09-25-2020 17:06:47
-
-ChangeCIAssociationSNC	Global	true	Base Change Association API. Use the "Ch...	
-04-29-2019 10:54:40
-
-ChangeCISuggestionUtil	IT Service Management AI agent collection	true	Provides the script tools for the Change...	
-08-10-2026 20:02:00
-
-ChangeCollisionHelper	Global	true	Helper methods for Change Collision dete...	
-06-06-2022 16:41:24
-
-ChangeMgmtBase	Vulnerability Response	true	Class to handle vulnerability change man...	
-07-21-2026 16:16:55
-
-ChangeNowAssistConflictUtilSNC	IT Service Management AI agent collection	true	Base class, do not modify. If customizat...	
-10-01-2025 16:25:34
-
-ChangeProcessSNC	Global	true	Base ServiceNow API extended by all type...	
-09-26-2020 06:34:16
-
-ChangeProposed	Global	true	Handles when a proposed change can be pe...	
-04-26-2024 10:58:20
-
-ChangeRequestDiscoverySNC	Global	true	Base script for use of integration of Ch...	
-07-23-2025 07:53:31
-
-ChangeUtilsSNC	Global	true	This function contains utility functions...	
-10-17-2025 05:09:57
-
-ChangeWeekendUtils	Global	true		
-10-15-2026 10:06:38
-
-CIUtils	Global	true	Utility class for working with configura...	
-10-28-2022 18:47:48
-
-CMDBAffectedCINotificationsUtils	Global	true		
-11-02-2023 18:40:33
-
-CMDBWsDMConstants	CMDB Workspace	true		
-06-30-2026 01:29:26
-
-CMDBWsDMPolicyReviewInfoDto	CMDB Workspace	true		
-12-10-2024 14:43:41
-
-ConfigItemEnrichmentUtils	Security Support Common	true		
-09-20-2017 01:16:24
-
-DeviceSpecsUtil	IT Service Management AI agent collection	true	Handles device-related information colle...	
-04-22-2026 02:00:00
-
-DPMConstants	Digital Portfolio Management	true	Constants file for Digital Portfolio Man...	
-12-15-2025 13:07:00
-
-DPMNeedsAttentionUtilsSNC	Digital Portfolio Management	true	Uses the Attribute records in the dpm_na...	
-11-10-2025 17:15:51
-
-DPMPAUtilsSNC	Digital Portfolio Management	true	Digital Portfolio Management utility fun...	
-05-14-2025 06:21:41
-
-DPMUtilsSNC	Digital Portfolio Management	true	Fetches KPI Groups, KPIs, and PA Indicators	
-08-18-2026 16:07:54
-
-EmAiInsight	Global	true		
-06-30-2025 10:30:51
-
-EmailIntegration	Security Support Common	true	Utility functions used to aid in convert...	
-08-19-2026 20:00:00
-
-FMUtils	Global	true	Utilities for financial management appli...	
-04-23-2024 04:25:30
-
-GetFileCapability	Security Incident Response	true		
-11-26-2022 03:20:31
-
-GetHostDetailsCapability	Security Incident Response	true		
-11-26-2022 23:46:32
-
-GetLoggedOnUsersCapability	Security Incident Response	true		
-11-27-2022 10:52:51
-
-GetNetworkStatisticsCapabilityUtil	Security Incident Response	true	Utility script include to be called from...	
-12-01-2022 04:46:16
-
-GetRunningProcessesCapabilityUtil	Security Incident Response	true	Utility script include to be called from...	
-12-02-2022 00:07:01
-
-GetRunningServicesCapability	Security Incident Response	true	Implements extension point sn_sec_cmn.Ca...	
-12-05-2022 04:54:14
-
-hgcChangeUtils	Global	true		
-11-13-2025 08:32:46
-
-ImpactedServicesDAO	IT Service Management AI agent collection	true	DAO for Impacted Services - queries task...	
-04-14-2026 20:11:28
-
-IncidentAssistAgentUtilSNC	IT Service Management AI agent collection	true		
-07-13-2026 06:30:00
-
-IncidentContextBuilder	IT Service Management AI agent collection	true		
-04-14-2026 18:22:32
-
-IncidentContextFormatter	IT Service Management AI agent collection	true	Formats the output of IncidentContextBui...	
-04-14-2026 21:02:37
-
-IncidentSummarizeUtils	ServiceNow Otto for IT Service Managemen...	true	Extension point imlpementation for sn_u...	
-03-07-2026 01:57:03
-
-IncidentUtilsSNC	Global	true	This function contains utility functions...	
-09-06-2024 02:59:51
-
-IsolateHostCapability	Security Incident Response	true	Implements extension point sn_sec_cmn.Ca...	
-12-05-2022 04:55:48
-
-MaintenanceScheduleCalculator	Global	true	Used to handle maintenance schedule calc...	
-03-09-2018 09:28:10
-
-ManyToManyExpanderSNC	Query Generation	true	Finds and attaches many-to-many relation...	
-08-04-2026 17:21:42
-
-MIMWorkbenchUtilSNC	Global	true	Major Incident Workbench Utils SNC Version.	
-08-01-2025 08:04:20
-
-OnCallUtilsSowSNC	On Call Scheduling for Service Operation...	true		
-08-13-2026 05:30:04
-
-ProposeChangeUtilSNC	Global	true	Base Propose Change utility class. Use t...	
-08-14-2024 10:31:30
-
-QueryRangeACLAuditor	Global	true		
-07-19-2025 23:51:47
-
-RcaITSMDataHook	Global	true	Extension to add more logic to collect c...	
-04-11-2021 16:42:13
-
-RelatedListCIAssetCandidateFilter	Incident Management for Service Operatio...	true	Implements global.RelatedListItemCandida...	
-06-12-2026 04:27:16
-
-ReleaseChangeRequestHandlerSNC	Digital Product Release	true		
-06-26-2025 07:33:02
-
-RemoveIsolationCapability	Security Incident Response	true	Implements extension point sn_sec_cmn.Ca...	
-12-06-2022 07:27:32
-
-reqItemUtils	Global	true		
-11-25-2019 11:23:37
-
-RequestSummarizeConstants	ServiceNow Otto for IT Service Managemen...	true	Constants class for ITSM	
-01-27-2026 03:33:28
-
-RiskScoreUtil	Security Support Common	true	A utility for calculating risk scores in...	
-04-22-2026 20:00:00
-
-RunAdditionalActionsCapability	Security Incident Response	true		
-12-19-2022 00:02:18
-
-SecurityCommonUtils	Security Support Common	true	Common utilities that are shared by vari...	
-08-26-2022 01:21:32
-
-SecurityIncidentUtils	Security Incident Response	true		
-06-22-2026 20:00:00
-
-ShowRelatedTasksAjax	Global	true	Supports show_related_records decoration...	
-04-25-2016 18:05:23
-
-SightingSearchMatchedHost	Threat Intelligence Support Common	true	A class hosting APIs related to Sighting...	
-02-26-2017 18:44:48
-
-SLAResultCalculator	Global	true		
-10-24-2023 19:01:39
-
-SMCIControls	Global	true	Service Management CI controls for addin...	
-06-02-2015 21:59:45
-
-SOWChangeDPRHandlerSNC	Change Management for Service Operations...	true		
-01-07-2026 07:08:46
-
-SOWChgConflictCalendarSNC	Change Management for Service Operations...	true		
-04-17-2026 20:00:00
-
-SOWChgScheduleAssistSNC	Change Management for Service Operations...	true		
-09-08-2023 08:35:14
-
-SOWIncidentOverviewUtilsSNC	Incident Management for Service Operatio...	true		
-11-05-2024 04:40:22
-
-SOWProblemUtilsSNC	Problem Management for Service Operation...	true		
-07-10-2024 10:47:26
-
-SOWRemedialActionPlaybookUtil	Record Page for Service Operations Works...	true		
-10-17-2025 01:16:42
-
-SPMConstants	Service Portfolio Management Premium	true		
-02-09-2021 17:43:22
-
-TaskSummarizeUtilsHelperForCHG	ServiceNow Otto for IT Service Managemen...	true	Helper function for TaskSummarizeUtilsFo...	
-06-01-2026 13:37:46
-
-TaskUtilsSNC	Global	true		
-02-11-2026 15:20:12
-
-ThreatSharingAnalytics	Trusted Security Circles	true	Collect threat information for threat sh...	
-03-09-2017 12:57:21
-
-UnauthorizedChangeRequestSNC	Global	true		
-07-11-2023 05:54:30
-
-UXCGenAICitationPromptUtils	Platform AI Agents and Skills	true		
-07-12-2026 20:00:00
-
-View Proposed Change	Change Management for Service Operations...	true		
-09-18-2024 10:25:19
-
-VulnerabilityScanUtil	Vulnerability Response	true	Utility class for managing vulnerability...	
-05-19-2024 16:05:01
-
-VulnerabilityUtils	Vulnerability Response	true		
-06-09-2026 20:00:00
-
-WorkspaceCABMeetingSNC	Meeting CAB	true	Returns data for CAB meeting.	
-05-10-2026 16:10:14
-1
-Showing rows 1 to 80 of 80
-to 80 of 80
-
-
-
-Flows: in Flow Designer, search for flows that create records on “CIs Affected” or “Impacted Services/CIs”. If that’s hard to search, skip it for now.
-
-Expect to see “affected cis from relationships” (the two rules we know) plus some OOB ones. Anything else is what we’re looking for.
+})(current, previous);
