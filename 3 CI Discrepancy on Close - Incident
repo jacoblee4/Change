@@ -1,0 +1,23 @@
+/**
+ * Business Rule: CI Discrepancy on Close - Incident
+ *
+ *   Table:     Incident [incident]
+ *   Active:    true
+ *   Advanced:  true
+ *   When:      async
+ *   Insert:    false
+ *   Update:    true
+ *   Order:     100
+ *
+ *   Condition (Advanced tab):
+ *     current.state.changesTo(7) && !current.cmdb_ci.nil() && (current.priority + '' == '1' || current.priority + '' == '2' || (current.priority + '' == '3' && current.u_p3high + '' == 'true'))
+ *
+ * Checks only the incident being closed. Uses CIDiscrepancyUtil.
+ *
+ * Script (Advanced tab):
+ */
+(function executeRule(current, previous /*null when async*/) {
+
+    new CIDiscrepancyUtil(false).processTask(current);
+
+})(current, previous);
