@@ -1,0 +1,276 @@
+/**
+ * Script Include: CIDiscrepancyUtil
+ * Application: Global | Client callable: false
+ *
+ * Finds Affected CIs / Impacted Services on a closed Incident or Change that
+ * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
+ *
+ * "Auto-mapped" means any of:
+ *   Affected CIs (task_ci)
+ *     - the main CI (OOB "Sync CI with Affected CIs")
+ *     - a CI the custom "affected cis from relationships" BR would add
+ *   Impacted Services (task_cmdb_ci_service)
+ *     - manually_added = false (only the OOB "Refresh Impacted Services" sets this)
+ *     - the ticket's Service / Service offering field (OOB "Sync BS with Impacted Services")
+ *     - a Business Service the custom BR would add
+ *
+ * Read-only against the tickets and CMDB. Only writes to the discrepancy table.
+ *
+ * Usage:
+ *   var util = new CIDiscrepancyUtil(false);  // true = dry run (log only)
+ *   util.processTask(incidentOrChangeGR);
+ */
+var CIDiscrepancyUtil = Class.create();
+CIDiscrepancyUtil.prototype = {
+
+    TABLE: 'u_configuration_item_discrepancy',
+    MAX_DEPTH: 10,
+
+    initialize: function(dryRun) {
+        this.dryRun = (dryRun === true);
+        this._expectedCache = {};   // prefix|mainCi -> { affected:{}, impacted:{} }
+        this._createdThisRun = {};  // mainCi|field|foundCi -> true
+        this._nameCache = {};
+        this.stats = { tasks: 0, affected: 0, impacted: 0, skippedDuplicate: 0 };
+    },
+
+    /**
+     * Compare one Incident/Change to the auto-mapping and log discrepancies.
+     */
+    processTask: function(taskGR) {
+        var mainCi = taskGR.getValue('cmdb_ci');
+        if (!mainCi)
+            return;
+
+        var table = taskGR.getRecordClassName();
+        if (table != 'incident' && table != 'change_request')
+            return;
+
+        this.stats.tasks++;
+        var taskId = taskGR.getUniqueValue();
+        var expected = this._getExpected(taskGR.cmdb_ci, mainCi, table);
+
+        // ---- Affected CIs ----
+        var seen = {};
+        var tci = new GlideRecord('task_ci');
+        tci.addQuery('task', taskId);
+        tci.addNotNullQuery('ci_item');
+        tci.query();
+        while (tci.next()) {
+            var ci = tci.getValue('ci_item');
+            if (seen[ci])
+                continue;
+            seen[ci] = true;
+
+            if (ci == mainCi || expected.affected[ci])
+                continue;
+
+            this._create(taskGR, mainCi, 'u_affected_ci', ci, 'affected');
+        }
+
+        // ---- Impacted Services ----
+        var fromFields = {};
+        var bs = taskGR.getValue('business_service');
+        if (bs)
+            fromFields[bs] = true;
+        if (taskGR.isValidField('service_offering')) {
+            var so = taskGR.getValue('service_offering');
+            if (so)
+                fromFields[so] = true;
+        }
+
+        // Collect rows first: a service counts as auto if ANY of its rows has manually_added = false
+        var services = {};
+        var ts = new GlideRecord('task_cmdb_ci_service');
+        ts.addQuery('task', taskId);
+        ts.addNotNullQuery('cmdb_ci_service');
+        ts.query();
+        while (ts.next()) {
+            var svc = ts.getValue('cmdb_ci_service');
+            var manual = String(ts.getValue('manually_added'));
+            var isRefresh = (manual == '0' || manual == 'false');
+            services[svc] = services[svc] || isRefresh;
+        }
+
+        for (var s in services) {
+            if (services[s])                       // added by Refresh Impacted Services
+                continue;
+            if (s == mainCi || fromFields[s] || expected.impacted[s])
+                continue;
+
+            this._create(taskGR, mainCi, 'u_impacted_ci', s, 'impacted');
+        }
+    },
+
+    // ------------------------------------------------------------------
+    // Expected auto-mapping (mirrors the "affected cis from relationships" BR)
+    // ------------------------------------------------------------------
+
+    _getExpected: function(ciElement, mainCi, prefix) {
+        var key = prefix + '|' + mainCi;
+        if (this._expectedCache[key])
+            return this._expectedCache[key];
+
+        // Same (swapped) property reads as the custom BR, so results match it
+        var upstream = this._parse(gs.getProperty(prefix + '_downstream_affected_ci', '{}'));
+        var downstream = this._parse(gs.getProperty(prefix + '_upstream_affected_ci', '{}'));
+
+        var result = { affected: {}, impacted: {} };
+        this._walk(ciElement, null, upstream, downstream, result, {}, 0);
+
+        this._expectedCache[key] = result;
+        return result;
+    },
+
+    _walk: function(ci, dir, upstream, downstream, result, visited, depth) {
+        if (!ci || depth > this.MAX_DEPTH)
+            return;
+
+        // Loop guard (the custom BR has none; only matters if recursion is ever turned on)
+        var visitKey = (ci.sys_id + '') + '|' + dir;
+        if (visited[visitKey])
+            return;
+        visited[visitKey] = true;
+
+        var up = this._getImpactedRelations(this._getRelationFromCi(ci, true), ci, true);
+        var down = this._getImpactedRelations(this._getRelationFromCi(ci, false), ci, false);
+
+        if (up && (!dir || dir == 'up') && upstream.execute) {
+            while (up.next()) {
+                if (upstream.recursive)
+                    this._walk(up.child, 'up', upstream, downstream, result, visited, depth + 1);
+                this._record(up.child, result);
+            }
+        }
+
+        if (down && (!dir || dir == 'down') && downstream.execute) {
+            while (down.next()) {
+                if (downstream.recursive)
+                    this._walk(down.parent, 'down', upstream, downstream, result, visited, depth + 1);
+                this._record(down.parent, result);
+            }
+        }
+    },
+
+    // Same table routing as the custom BR's addToAffectedCi()
+    _record: function(ciElement, result) {
+        var id = ciElement + '';
+        if (!id)
+            return;
+        var ciClass = (ciElement.sys_class_name || ciElement.getTableName()) + '';
+        if (ciClass == 'cmdb_ci_service')
+            result.impacted[id] = true;
+        else
+            result.affected[id] = true;
+    },
+
+    // Copied from the custom BR
+    _getImpactedRelations: function(rels, ci, parent) {
+        var realRelations = new GlideRecord('cmdb_rel_ci');
+        var queries = [];
+        if (rels.length != 0) {
+            rels.forEach(function(rel) {
+                var conditions = [];
+                if (parent)
+                    conditions.push('parent=' + ci.sys_id);
+                else
+                    conditions.push('child=' + ci.sys_id);
+                conditions.push('parent.sys_class_nameINSTANCEOF' + rel.base_class);
+                conditions.push('child.sys_class_nameINSTANCEOF' + rel.dependent_class);
+                conditions.push('type=' + rel.relationship.split(':')[1]);
+                queries.push(conditions.join('^'));
+            });
+            realRelations.addEncodedQuery(queries.join('^NQ'));
+            realRelations.query();
+            return realRelations;
+        }
+    },
+
+    // Copied from the custom BR, minus its addQuery('', 'STARTWITH', ...) lines.
+    // Those have an empty field name, which ServiceNow ignores (confirmed by the
+    // trace results), so leaving them out gives the same result without log noise.
+    _getRelationFromCi: function(ci, parent) {
+        var tableName = (ci.sys_class_name || ci.getTableName());
+        var table = new TableUtils(tableName);
+        var parentTables = JSON.parse(JSON.stringify(table.getTables().toArray())).join(',');
+
+        var impacted = new GlideRecord('cmdb_rel_type_suggest');
+        impacted.addQuery('u_impacted_relation', 1);
+        if (parent)
+            impacted.addQuery('base_class', 'IN', parentTables);
+        else
+            impacted.addQuery('dependent_class', 'IN', parentTables);
+        impacted.query();
+
+        var relations = [];
+        while (impacted.next()) {
+            relations.push({
+                base_class: impacted.getValue('base_class'),
+                relationship: impacted.getValue('relationship'),
+                dependent_class: impacted.getValue('dependent_class')
+            });
+        }
+        return relations;
+    },
+
+    // ------------------------------------------------------------------
+    // Discrepancy records
+    // ------------------------------------------------------------------
+
+    _create: function(taskGR, mainCi, field, foundCi, label) {
+        var key = mainCi + '|' + field + '|' + foundCi;
+        if (this._createdThisRun[key] || this._activeExists(mainCi, field, foundCi)) {
+            this.stats.skippedDuplicate++;
+            return;
+        }
+        this._createdThisRun[key] = true;
+
+        var desc = "Main CI '" + this._name(mainCi) + "' found " + label +
+            " CI discrepancy '" + this._name(foundCi) + "'";
+
+        if (this.dryRun) {
+            gs.info('[CI Discrepancy][DRY RUN] ' + taskGR.getValue('number') + ': ' + desc);
+            this.stats[label]++;
+            return;
+        }
+
+        var rec = new GlideRecord(this.TABLE);
+        rec.initialize();
+        rec.setValue('parent', taskGR.getUniqueValue());
+        rec.setValue('cmdb_ci', mainCi);
+        rec.setValue(field, foundCi);
+        rec.setValue('short_description', desc.substring(0, 160));
+        if (rec.insert())
+            this.stats[label]++;
+    },
+
+    // Duplicate = an ACTIVE record with the same main CI + same found CI
+    _activeExists: function(mainCi, field, foundCi) {
+        var d = new GlideRecord(this.TABLE);
+        d.addActiveQuery();
+        d.addQuery('cmdb_ci', mainCi);
+        d.addQuery(field, foundCi);
+        d.setLimit(1);
+        d.query();
+        return d.hasNext();
+    },
+
+    _name: function(ciId) {
+        if (this._nameCache[ciId])
+            return this._nameCache[ciId];
+        var ci = new GlideRecord('cmdb_ci');
+        var name = ci.get(ciId) ? ci.getDisplayValue() : ciId;
+        this._nameCache[ciId] = name;
+        return name;
+    },
+
+    _parse: function(str) {
+        try {
+            return JSON.parse(str) || {};
+        } catch (e) {
+            return {};
+        }
+    },
+
+    type: 'CIDiscrepancyUtil'
+};
