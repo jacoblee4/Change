@@ -1,20 +1,6 @@
 /**
- * Script Include: CIDiscrepancyUtil
- * Application: Global | Client callable: false
- *
  * Finds Affected CIs / Impacted Services on a closed Incident or Change that
  * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
- *
- * "Auto-mapped" means any of:
- *   Affected CIs (task_ci)
- *     - the main CI (OOB "Sync CI with Affected CIs")
- *     - a CI the custom "affected cis from relationships" BR would add
- *   Impacted Services (task_cmdb_ci_service)
- *     - manually_added = false (only the OOB "Refresh Impacted Services" sets this)
- *     - the ticket's Service / Service offering field (OOB "Sync BS with Impacted Services")
- *     - a Business Service the custom BR would add
- *
- * Read-only against the tickets and CMDB. Only writes to the discrepancy table.
  *
  * Usage:
  *   var util = new CIDiscrepancyUtil(false);  // true = dry run (log only)
@@ -24,7 +10,6 @@ var CIDiscrepancyUtil = Class.create();
 CIDiscrepancyUtil.prototype = {
 
     TABLE: 'u_configuration_item_discrepancy',
-    MAX_DEPTH: 10,
 
     initialize: function(dryRun) {
         this.dryRun = (dryRun === true);
@@ -102,10 +87,8 @@ CIDiscrepancyUtil.prototype = {
         }
     },
 
-    // ------------------------------------------------------------------
-    // Expected auto-mapping (mirrors the "affected cis from relationships" BR)
-    // ------------------------------------------------------------------
 
+    // Expected auto-mapping (mirrors the "affected cis from relationships" BR)
     _getExpected: function(ciElement, mainCi, prefix) {
         var key = prefix + '|' + mainCi;
         if (this._expectedCache[key])
@@ -123,7 +106,7 @@ CIDiscrepancyUtil.prototype = {
     },
 
     _walk: function(ci, dir, upstream, downstream, result, visited, depth) {
-        if (!ci || depth > this.MAX_DEPTH)
+        if (!ci)
             return;
 
         // Loop guard (the custom BR has none; only matters if recursion is ever turned on)
@@ -213,10 +196,8 @@ CIDiscrepancyUtil.prototype = {
         return relations;
     },
 
-    // ------------------------------------------------------------------
-    // Discrepancy records
-    // ------------------------------------------------------------------
 
+    // Discrepancy records
     _create: function(taskGR, mainCi, field, foundCi, label) {
         var key = mainCi + '|' + field + '|' + foundCi;
         if (this._createdThisRun[key] || this._activeExists(mainCi, field, foundCi)) {
