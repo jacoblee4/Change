@@ -2,25 +2,32 @@
  * Finds Affected CIs / Impacted Services on a closed Incident or Change that
  * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
  *
- * Only creates records for:
- *   - Active CIs (Install status is not Retired), for Affected and Impacted
- *   - Business Applications (cmdb_ci_business_app), for Affected CIs
+ * Filters:
+ *   - Affected and Impacted CIs must always be active (not Retired)
+ *   - businessAppsOnly = true (default): main CI, Affected and Impacted CIs must
+ *     all be Business Applications (cmdb_ci_business_app)
+ *   - businessAppsOnly = false: any CI class
  *
  * Usage:
- *   var util = new CIDiscrepancyUtil(false);  // true = dry run (log only)
+ *   new CIDiscrepancyUtil(dryRun, businessAppsOnly)
+ *   var util = new CIDiscrepancyUtil(false);         // live, Business Apps only (default)
+ *   var util = new CIDiscrepancyUtil(false, false);  // live, all CI classes
+ *   var util = new CIDiscrepancyUtil(true, true);    // dry run, Business Apps only
  *   util.processTask(incidentOrChangeGR);
  */
 var CIDiscrepancyUtil = Class.create();
 CIDiscrepancyUtil.prototype = {
 
     TABLE: 'u_configuration_item_discrepancy',
+    CI_CLASS: 'cmdb_ci_business_app',
 
-    initialize: function(dryRun) {
+    initialize: function(dryRun, businessAppsOnly) {
         this.dryRun = (dryRun === true);
+        this.businessAppsOnly = (businessAppsOnly !== false);   // default true
         this._expectedCache = {};   // prefix|mainCi -> { affected:{}, impacted:{} }
         this._createdThisRun = {};  // mainCi|field|foundCi -> true
         this._nameCache = {};
-        this.stats = { tasks: 0, affected: 0, impacted: 0, skippedDuplicate: 0, skippedNotEligible: 0 };
+        this.stats = { tasks: 0, skippedMainCi: 0, affected: 0, impacted: 0, skippedDuplicate: 0, skippedNotEligible: 0 };
     },
 
     /**
@@ -34,6 +41,12 @@ CIDiscrepancyUtil.prototype = {
         var table = taskGR.getRecordClassName();
         if (table != 'incident' && table != 'change_request')
             return;
+
+        // Main CI must be a Business Application (when businessAppsOnly is on)
+        if (this.businessAppsOnly && taskGR.cmdb_ci.sys_class_name + '' != this.CI_CLASS) {
+            this.stats.skippedMainCi++;
+            return;
+        }
 
         this.stats.tasks++;
         var taskId = taskGR.getUniqueValue();
@@ -204,8 +217,8 @@ CIDiscrepancyUtil.prototype = {
 
     // Discrepancy records
     _create: function(taskGR, mainCi, field, foundCi, label) {
-        // Only active CIs (and only Business Apps for Affected CIs)
-        if (!this._isEligible(foundCi, field)) {
+        // Only active CIs (and Business Applications when businessAppsOnly is on)
+        if (!this._isEligible(foundCi)) {
             this.stats.skippedNotEligible++;
             return;
         }
@@ -236,8 +249,9 @@ CIDiscrepancyUtil.prototype = {
             this.stats[label]++;
     },
 
-    // Active CI check (both lists) + Business App check (Affected CIs only)
-    _isEligible: function(ciId, field) {
+    // Active (not Retired) check, plus Business Application check when businessAppsOnly is on.
+    // Used for Affected and Impacted.
+    _isEligible: function(ciId) {
         var ci = new GlideRecord('cmdb_ci');
         if (!ci.get(ciId))
             return false;
@@ -246,8 +260,8 @@ CIDiscrepancyUtil.prototype = {
         if (ci.getValue('install_status') == '7')
             return false;
 
-        // Affected CIs: Business Applications only
-        if (field == 'u_affected_ci' && ci.getValue('sys_class_name') != 'cmdb_ci_business_app')
+        // Business Applications only (when businessAppsOnly is on)
+        if (this.businessAppsOnly && ci.getValue('sys_class_name') != this.CI_CLASS)
             return false;
 
         return true;
