@@ -15,15 +15,17 @@
  */
 (function () {
 
-    var DRY_RUN = true;      // <-- set to false to create records
+    var DRY_RUN = true;               // <-- set to false to create records
+    var BUSINESS_APPS_ONLY = true;    // true = Business Apps only (main, affected, impacted); false = all CI classes
     var MONTHS_BACK = 24;
 
     var since = new GlideDateTime();
     since.addMonthsUTC(-MONTHS_BACK);
     var sinceValue = since.getValue();
 
-    var util = new CIDiscrepancyUtil(DRY_RUN);
-    gs.info('[CI Discrepancy] Starting backfill. DRY_RUN=' + DRY_RUN + ', closed since ' + sinceValue);
+    var util = new CIDiscrepancyUtil(DRY_RUN, BUSINESS_APPS_ONLY);
+    gs.info('[CI Discrepancy] Starting backfill. DRY_RUN=' + DRY_RUN +
+        ', BUSINESS_APPS_ONLY=' + BUSINESS_APPS_ONLY + ', closed since ' + sinceValue);
 
     run('change_request', 'Normal/Expedited changes', function (gr) {
         gr.addQuery('state', 3);
@@ -45,12 +47,16 @@
         ' | Affected found: ' + util.stats.affected +
         ' | Impacted found: ' + util.stats.impacted +
         ' | Skipped as duplicate: ' + util.stats.skippedDuplicate +
+        ' | Skipped (found CI not eligible): ' + util.stats.skippedNotEligible +
+        ' | Skipped (main CI not a Business App): ' + util.stats.skippedMainCi +
         (DRY_RUN ? ' | DRY RUN - nothing created' : ''));
 
     function run(table, label, addFilters) {
         var gr = new GlideRecord(table);
         addFilters(gr);
         gr.addNotNullQuery('cmdb_ci');
+        if (BUSINESS_APPS_ONLY)
+            gr.addQuery('cmdb_ci.sys_class_name', 'cmdb_ci_business_app');   // speed-up only; same results
         gr.addQuery('closed_at', '>=', sinceValue);
         gr.orderBy('closed_at');
         gr.query();
