@@ -2,6 +2,10 @@
  * Finds Affected CIs / Impacted Services on a closed Incident or Change that
  * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
  *
+ * Only creates records for:
+ *   - Active CIs (Install status is not Retired), for Affected and Impacted
+ *   - Business Applications (cmdb_ci_business_app), for Affected CIs
+ *
  * Usage:
  *   var util = new CIDiscrepancyUtil(false);  // true = dry run (log only)
  *   util.processTask(incidentOrChangeGR);
@@ -16,7 +20,7 @@ CIDiscrepancyUtil.prototype = {
         this._expectedCache = {};   // prefix|mainCi -> { affected:{}, impacted:{} }
         this._createdThisRun = {};  // mainCi|field|foundCi -> true
         this._nameCache = {};
-        this.stats = { tasks: 0, affected: 0, impacted: 0, skippedDuplicate: 0 };
+        this.stats = { tasks: 0, affected: 0, impacted: 0, skippedDuplicate: 0, skippedNotEligible: 0 };
     },
 
     /**
@@ -99,17 +103,18 @@ CIDiscrepancyUtil.prototype = {
         var downstream = this._parse(gs.getProperty(prefix + '_upstream_affected_ci', '{}'));
 
         var result = { affected: {}, impacted: {} };
-        this._walk(ciElement, null, upstream, downstream, result, {}, 0);
+        this._walk(ciElement, null, upstream, downstream, result, {});
 
         this._expectedCache[key] = result;
         return result;
     },
 
-    _walk: function(ci, dir, upstream, downstream, result, visited, depth) {
+    // No depth limit, same as the custom BR.
+    _walk: function(ci, dir, upstream, downstream, result, visited) {
         if (!ci)
             return;
 
-        // Loop guard (the custom BR has none; only matters if recursion is ever turned on)
+        // Loop guard: skips a CI already walked so circular relationships can't loop forever
         var visitKey = (ci.sys_id + '') + '|' + dir;
         if (visited[visitKey])
             return;
@@ -121,7 +126,7 @@ CIDiscrepancyUtil.prototype = {
         if (up && (!dir || dir == 'up') && upstream.execute) {
             while (up.next()) {
                 if (upstream.recursive)
-                    this._walk(up.child, 'up', upstream, downstream, result, visited, depth + 1);
+                    this._walk(up.child, 'up', upstream, downstream, result, visited);
                 this._record(up.child, result);
             }
         }
@@ -129,7 +134,7 @@ CIDiscrepancyUtil.prototype = {
         if (down && (!dir || dir == 'down') && downstream.execute) {
             while (down.next()) {
                 if (downstream.recursive)
-                    this._walk(down.parent, 'down', upstream, downstream, result, visited, depth + 1);
+                    this._walk(down.parent, 'down', upstream, downstream, result, visited);
                 this._record(down.parent, result);
             }
         }
@@ -199,6 +204,12 @@ CIDiscrepancyUtil.prototype = {
 
     // Discrepancy records
     _create: function(taskGR, mainCi, field, foundCi, label) {
+        // Only active CIs (and only Business Apps for Affected CIs)
+        if (!this._isEligible(foundCi, field)) {
+            this.stats.skippedNotEligible++;
+            return;
+        }
+
         var key = mainCi + '|' + field + '|' + foundCi;
         if (this._createdThisRun[key] || this._activeExists(mainCi, field, foundCi)) {
             this.stats.skippedDuplicate++;
@@ -223,6 +234,23 @@ CIDiscrepancyUtil.prototype = {
         rec.setValue('short_description', desc.substring(0, 160));
         if (rec.insert())
             this.stats[label]++;
+    },
+
+    // Active CI check (both lists) + Business App check (Affected CIs only)
+    _isEligible: function(ciId, field) {
+        var ci = new GlideRecord('cmdb_ci');
+        if (!ci.get(ciId))
+            return false;
+
+        // Active only: skip Retired CIs (Install status 7)
+        if (ci.getValue('install_status') == '7')
+            return false;
+
+        // Affected CIs: Business Applications only
+        if (field == 'u_affected_ci' && ci.getValue('sys_class_name') != 'cmdb_ci_business_app')
+            return false;
+
+        return true;
     },
 
     // Duplicate = an ACTIVE record with the same main CI + same found CI
