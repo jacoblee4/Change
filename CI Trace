@@ -1,25 +1,11 @@
-Recommend (4)
-Recommend level findings prevent saving the record unless the issue is resolved or an exception reason is provided.
 Recommend | impact level-6
 sn_SE11313: Multiple GlideRecord Instances in a Single Script
-Details: Found 8 separate GlideRecord instantiations in this script (threshold: 3). Consider consolidating queries to reduce database calls.
+Details: Found 7 separate GlideRecord instantiations in this script (threshold: 3). Consider consolidating queries to reduce database calls.
 Steps to resolve issue: Consolidate GlideRecord queries where possible using addOrCondition(), GlideAggregate for counts/summaries, or by reusing a single GlideRecord instance instead of creating a new one for each lookup.
 Supporting documentation
 Create exception
 Recommend | impact level-6
 sn_SE11182: Script Includes should use getValue() instead of direct field access
-Details: Found on lines 35, 39, 210, 216, 34, 119, 164, 166, 182, 55, 88, 168, 34, 119, 164, 166 and 182
+Details: Found on lines 36, 40, 216, 222, 57, 91 and 171
 Steps to resolve issue: Open the flagged Script Include and locate each usage of the GlideRecord variable identified in the finding details. Replace direct field access (for example `gr.fieldName`) with `gr.getValue('fieldName')`, or `gr.refField.fieldName.toString()` for dot-walked reference fields.
-Create exception
-Recommend | impact level-6
-sn_SE10658: Client Scripts and Script Includes should have a meaningful description
-Details: Description is empty or identical to the record name. Provide a description of the script's purpose.
-Steps to resolve issue: 1. Open the flagged Client Script or Script Include record. 2. In the Description field, write a specific explanation of what the script does and why it exists (at least 25 characters, and different from the record's Name). 3. Save the record.
-Supporting documentation
-Create exception
-Recommend | impact level-5
-sn_SE11553: GlideRecord Queries Should Use setLimit()
-Details: Occurred on Line # 45, 74 and 186 of script field.
-Steps to resolve issue: Call setLimit() before query() to restrict the result set to the number of records actually needed. If only one record is required, use setLimit(1) or consider using get() instead.
-Supporting documentation
 Create exception
