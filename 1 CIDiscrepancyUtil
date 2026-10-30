@@ -2,19 +2,26 @@
  * Finds Affected CIs / Impacted Services on a closed Incident or Change that
  * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
  *
+ * Usage:
+ *   new CIDiscrepancyUtil(dryRun, businessAppsOnly)
+ *   var util = new CIDiscrepancyUtil(false);         // live, Business Apps only (default)
+ *   var util = new CIDiscrepancyUtil(false, false);  // live, all CI classes
+ *   var util = new CIDiscrepancyUtil(true, true);    // dry run, Business Apps only
+ *   util.processTask(incidentOrChangeGR);
  */
 var CIDiscrepancyUtil = Class.create();
 CIDiscrepancyUtil.prototype = {
 
     TABLE: 'u_configuration_item_discrepancy',
     CI_CLASS: 'cmdb_ci_business_app',
+    ROW_LIMIT: 1000,   // max related-list rows read per ticket (scan requires a limit)
 
     initialize: function(dryRun, businessAppsOnly) {
         this.dryRun = (dryRun === true);
         this.businessAppsOnly = (businessAppsOnly !== false);   // default true
         this._expectedCache = {};   // prefix|mainCi -> { affected:{}, impacted:{} }
         this._createdThisRun = {};  // mainCi|field|foundCi -> true
-        this._nameCache = {};
+        this._ciCache = {};         // ciId -> { name, cls, status }
         this.stats = { tasks: 0, skippedMainCi: 0, affected: 0, impacted: 0, skippedDuplicate: 0, skippedNotEligible: 0 };
     },
 
@@ -31,7 +38,7 @@ CIDiscrepancyUtil.prototype = {
             return;
 
         // Main CI must be a Business Application (when businessAppsOnly is on)
-        if (this.businessAppsOnly && taskGR.cmdb_ci.sys_class_name + '' != this.CI_CLASS) {
+        if (this.businessAppsOnly && this._getCi(mainCi).cls != this.CI_CLASS) {
             this.stats.skippedMainCi++;
             return;
         }
@@ -45,6 +52,7 @@ CIDiscrepancyUtil.prototype = {
         var tci = new GlideRecord('task_ci');
         tci.addQuery('task', taskId);
         tci.addNotNullQuery('ci_item');
+        tci.setLimit(this.ROW_LIMIT);
         tci.query();
         while (tci.next()) {
             var ci = tci.getValue('ci_item');
@@ -74,6 +82,7 @@ CIDiscrepancyUtil.prototype = {
         var ts = new GlideRecord('task_cmdb_ci_service');
         ts.addQuery('task', taskId);
         ts.addNotNullQuery('cmdb_ci_service');
+        ts.setLimit(this.ROW_LIMIT);
         ts.query();
         while (ts.next()) {
             var svc = ts.getValue('cmdb_ci_service');
@@ -112,23 +121,24 @@ CIDiscrepancyUtil.prototype = {
 
     // No depth limit, same as the custom BR.
     _walk: function(ci, dir, upstream, downstream, result, visited) {
-        if (!ci)
+        var ciId = ci.toString();
+        if (!ciId)
             return;
 
         // Loop guard: skips a CI already walked so circular relationships can't loop forever
-        var visitKey = (ci.sys_id + '') + '|' + dir;
+        var visitKey = ciId + '|' + dir;
         if (visited[visitKey])
             return;
         visited[visitKey] = true;
 
-        var up = this._getImpactedRelations(this._getRelationFromCi(ci, true), ci, true);
-        var down = this._getImpactedRelations(this._getRelationFromCi(ci, false), ci, false);
+        var up = this._getImpactedRelations(this._getRelationFromCi(ci, true), ciId, true);
+        var down = this._getImpactedRelations(this._getRelationFromCi(ci, false), ciId, false);
 
         if (up && (!dir || dir == 'up') && upstream.execute) {
             while (up.next()) {
                 if (upstream.recursive)
                     this._walk(up.child, 'up', upstream, downstream, result, visited);
-                this._record(up.child, result);
+                this._record(up.getValue('child'), result);
             }
         }
 
@@ -136,50 +146,51 @@ CIDiscrepancyUtil.prototype = {
             while (down.next()) {
                 if (downstream.recursive)
                     this._walk(down.parent, 'down', upstream, downstream, result, visited);
-                this._record(down.parent, result);
+                this._record(down.getValue('parent'), result);
             }
         }
     },
 
     // Same table routing as the custom BR's addToAffectedCi()
-    _record: function(ciElement, result) {
-        var id = ciElement + '';
-        if (!id)
+    _record: function(ciId, result) {
+        if (!ciId)
             return;
-        var ciClass = (ciElement.sys_class_name || ciElement.getTableName()) + '';
-        if (ciClass == 'cmdb_ci_service')
-            result.impacted[id] = true;
+        if (this._getCi(ciId).cls == 'cmdb_ci_service')
+            result.impacted[ciId] = true;
         else
-            result.affected[id] = true;
+            result.affected[ciId] = true;
     },
 
     // Copied from the custom BR
-    _getImpactedRelations: function(rels, ci, parent) {
-        var realRelations = new GlideRecord('cmdb_rel_ci');
+    _getImpactedRelations: function(rels, ciId, parent) {
+        if (rels.length == 0)
+            return null;
+
         var queries = [];
-        if (rels.length != 0) {
-            rels.forEach(function(rel) {
-                var conditions = [];
-                if (parent)
-                    conditions.push('parent=' + ci.sys_id);
-                else
-                    conditions.push('child=' + ci.sys_id);
-                conditions.push('parent.sys_class_nameINSTANCEOF' + rel.base_class);
-                conditions.push('child.sys_class_nameINSTANCEOF' + rel.dependent_class);
-                conditions.push('type=' + rel.relationship.split(':')[1]);
-                queries.push(conditions.join('^'));
-            });
-            realRelations.addEncodedQuery(queries.join('^NQ'));
-            realRelations.query();
-            return realRelations;
-        }
+        rels.forEach(function(rel) {
+            var conditions = [];
+            if (parent)
+                conditions.push('parent=' + ciId);
+            else
+                conditions.push('child=' + ciId);
+            conditions.push('parent.sys_class_nameINSTANCEOF' + rel.base_class);
+            conditions.push('child.sys_class_nameINSTANCEOF' + rel.dependent_class);
+            conditions.push('type=' + rel.relationship.split(':')[1]);
+            queries.push(conditions.join('^'));
+        });
+
+        var realRelations = new GlideRecord('cmdb_rel_ci');
+        realRelations.addEncodedQuery(queries.join('^NQ'));
+        realRelations.setLimit(this.ROW_LIMIT);
+        realRelations.query();
+        return realRelations;
     },
 
     // Copied from the custom BR, minus its addQuery('', 'STARTWITH', ...) lines.
     // Those have an empty field name, which ServiceNow ignores (confirmed by the
     // trace results), so leaving them out gives the same result without log noise.
     _getRelationFromCi: function(ci, parent) {
-        var tableName = (ci.sys_class_name || ci.getTableName());
+        var tableName = this._getCi(ci.toString()).cls || ci.getTableName();
         var table = new TableUtils(tableName);
         var parentTables = JSON.parse(JSON.stringify(table.getTables().toArray())).join(',');
 
@@ -189,6 +200,7 @@ CIDiscrepancyUtil.prototype = {
             impacted.addQuery('base_class', 'IN', parentTables);
         else
             impacted.addQuery('dependent_class', 'IN', parentTables);
+        impacted.setLimit(this.ROW_LIMIT);
         impacted.query();
 
         var relations = [];
@@ -218,8 +230,8 @@ CIDiscrepancyUtil.prototype = {
         }
         this._createdThisRun[key] = true;
 
-        var desc = "Main CI '" + this._name(mainCi) + "' found " + label +
-            " CI discrepancy '" + this._name(foundCi) + "'";
+        var desc = "Main CI '" + this._getCi(mainCi).name + "' found " + label +
+            " CI discrepancy '" + this._getCi(foundCi).name + "'";
 
         if (this.dryRun) {
             gs.info('[CI Discrepancy][DRY RUN] ' + taskGR.getValue('number') + ': ' + desc);
@@ -240,16 +252,16 @@ CIDiscrepancyUtil.prototype = {
     // Active (not Retired) check, plus Business Application check when businessAppsOnly is on.
     // Used for Affected and Impacted.
     _isEligible: function(ciId) {
-        var ci = new GlideRecord('cmdb_ci');
-        if (!ci.get(ciId))
+        var info = this._getCi(ciId);
+        if (!info.exists)
             return false;
 
         // Active only: skip Retired CIs (Install status 7)
-        if (ci.getValue('install_status') == '7')
+        if (info.status == '7')
             return false;
 
         // Business Applications only (when businessAppsOnly is on)
-        if (this.businessAppsOnly && ci.getValue('sys_class_name') != this.CI_CLASS)
+        if (this.businessAppsOnly && info.cls != this.CI_CLASS)
             return false;
 
         return true;
@@ -266,13 +278,21 @@ CIDiscrepancyUtil.prototype = {
         return d.hasNext();
     },
 
-    _name: function(ciId) {
-        if (this._nameCache[ciId])
-            return this._nameCache[ciId];
+    // One cached CI lookup for name, class and install status
+    _getCi: function(ciId) {
+        if (this._ciCache[ciId])
+            return this._ciCache[ciId];
+
+        var info = { exists: false, name: ciId, cls: '', status: '' };
         var ci = new GlideRecord('cmdb_ci');
-        var name = ci.get(ciId) ? ci.getDisplayValue() : ciId;
-        this._nameCache[ciId] = name;
-        return name;
+        if (ciId && ci.get(ciId)) {
+            info.exists = true;
+            info.name = ci.getDisplayValue();
+            info.cls = ci.getValue('sys_class_name');
+            info.status = ci.getValue('install_status');
+        }
+        this._ciCache[ciId] = info;
+        return info;
     },
 
     _parse: function(str) {
