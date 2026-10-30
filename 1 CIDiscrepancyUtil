@@ -2,18 +2,6 @@
  * Finds Affected CIs / Impacted Services on a closed Incident or Change that
  * were NOT auto-mapped, and creates records in u_configuration_item_discrepancy.
  *
- * Filters:
- *   - Affected and Impacted CIs must always be active (not Retired)
- *   - businessAppsOnly = true (default): main CI, Affected and Impacted CIs must
- *     all be Business Applications (cmdb_ci_business_app)
- *   - businessAppsOnly = false: any CI class
- *
- * Usage:
- *   new CIDiscrepancyUtil(dryRun, businessAppsOnly)
- *   var util = new CIDiscrepancyUtil(false);         // live, Business Apps only (default)
- *   var util = new CIDiscrepancyUtil(false, false);  // live, all CI classes
- *   var util = new CIDiscrepancyUtil(true, true);    // dry run, Business Apps only
- *   util.processTask(incidentOrChangeGR);
  */
 var CIDiscrepancyUtil = Class.create();
 CIDiscrepancyUtil.prototype = {
